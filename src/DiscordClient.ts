@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { Client, REST, Routes } from 'discord.js';
 import config from './config/config';
 import logger from './config/logger';
-import listeners from './listeners';
+import loadListeners from './listeners';
 import CommandInterface from './interfaces/Command.interface';
 
 class DiscordClient extends Client {
@@ -13,7 +13,7 @@ class DiscordClient extends Client {
 	constructor(options) {
 		super(options);
 		this.commands = [];
-		this.loadCommands();
+		this.connect();
 	}
 
 	public static getInstance(options: object | undefined = undefined): DiscordClient {
@@ -23,9 +23,18 @@ class DiscordClient extends Client {
 		return DiscordClient.instance;
 	}
 
-	async loadCommands(): Promise<void> {
-		const { botToken, clientId, guildId, } = config;
+	private async connect(): Promise<void> {
+		const { botToken, } = config;
 
+		await this.loadCommands();
+		await this.resetCommands();
+
+		loadListeners();
+
+		this.login(botToken);
+	}
+
+	private async loadCommands(): Promise<void> {
 		const commandsPath = path.join(__dirname, 'commands');
 		const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts'));
 		for (const file of commandFiles) {
@@ -34,29 +43,25 @@ class DiscordClient extends Client {
 
 			this.commands.push(command);
 		}
+	}
+
+	private async resetCommands(): Promise<void> {
+		const { botToken, clientId, guildId, } = config;
 
 		const rest = new REST({ version: '10', }).setToken(botToken || '');
 
 		try {
-			logger.info('Resetando comandos...');
+			logger.info('Resetting commands...');
 	
 			await rest.put(
 				Routes.applicationGuildCommands(clientId || '', guildId || ''),
 				{ body: this.commands.map(c => c.data), }
 			);
 	
-			logger.info('Comandos registrados com sucesso');
+			logger.info('Commands successfully reset');
 		} catch (error) {
 			logger.error(error);
 		}
-
-		this.on('ready', () => {
-			logger.info('Conectado!');
-		});
-
-		listeners();
-
-		this.login(botToken);
 	}
 
 	public getCommands(): CommandInterface[] {
